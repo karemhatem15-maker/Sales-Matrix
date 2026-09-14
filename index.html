@@ -1,0 +1,629 @@
+import React, { useState, useMemo } from "react";
+import { Plus, Trash2, Star, Target, Sparkles } from "lucide-react";
+import {
+  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ReferenceArea, ReferenceLine,
+} from "recharts";
+
+/* ==========================================================================
+   REFERENCE DATA
+   Extracted from the source workbook's Behavioral Rating Guide and Lists
+   sheets: all 19 criteria (11 Skill + 8 Will), their plain-English meaning,
+   and the coaching focus text for low / mid / high scores, plus the four
+   quadrant playbooks (management approach + coaching action).
+   ========================================================================== */
+
+const CRITERIA = [
+  { name: "Product Knowledge", category: "Skill", meaning: "Knowledge of products, features, specifications, and benefits.", focusLow: "Targeted product training; guided specification exercises; weekly knowledge checks; supervised customer explanations.", focusMid: "Maintain accuracy and broaden knowledge of less-familiar families and applications.", focusHigh: "Lead product clinics; develop comparison guides; coach peers on complex applications." },
+  { name: "Sales Technique", category: "Skill", meaning: "Ability to apply effective sales methods throughout the sales process.", focusLow: "Structured sales-process coaching; call planning; role-play; accompanied meetings; weekly opportunity review.", focusMid: "Reinforce consistency and improve one advanced technique such as stakeholder mapping.", focusHigh: "Handle strategic opportunities; coach peers; codify effective sales practices." },
+  { name: "Communication & Presentation", category: "Skill", meaning: "Ability to communicate clearly and present products professionally.", focusLow: "Communication coaching; message templates; presentation rehearsal; listening practice; manager review before key meetings.", focusMid: "Maintain clear communication and strengthen delivery for more demanding audiences.", focusHigh: "Lead high-stakes pitches; mentor presenters; create reusable presentation standards." },
+  { name: "Objection Handling", category: "Skill", meaning: "Ability to understand, address, and overcome customer objections.", focusLow: "Objection library; role-play; product/commercial refreshers; debrief lost or stalled opportunities.", focusMid: "Maintain consistency and practice complex objections relevant to the pipeline.", focusHigh: "Coach peers; analyze objection trends; improve team response guides." },
+  { name: "Negotiation", category: "Skill", meaning: "Ability to reach mutually beneficial agreements while protecting company interests.", focusLow: "Negotiation planning template; approval-rule training; role-play; manager-led preparation and debrief.", focusMid: "Maintain discipline and improve multi-variable trade-offs and alternatives.", focusHigh: "Lead strategic negotiations; mentor peers; build negotiation playbooks from cases." },
+  { name: "Closing", category: "Skill", meaning: "Ability to confidently convert opportunities into sales.", focusLow: "Closing role-play; opportunity-specific close plans; pipeline aging review; manager support on live opportunities.", focusMid: "Maintain discipline and strengthen stakeholder alignment on larger deals.", focusHigh: "Lead complex closing strategy; coach peers; improve close-plan standards." },
+  { name: "Follow-up", category: "Skill", meaning: "Ability to consistently follow up with customers and opportunities.", focusLow: "Daily task discipline; CRM reminders; follow-up templates; weekly overdue review; close supervision.", focusMid: "Maintain consistency and improve prioritization of high-value or time-sensitive opportunities.", focusHigh: "Coach peers; refine follow-up standards; lead recovery of important stalled opportunities." },
+  { name: "CRM / Process Knowledge", category: "Skill", meaning: "Understanding and proper use of CRM systems and sales processes.", focusLow: "CRM retraining; field checklist; weekly data-quality review; supervised stage and approval decisions.", focusMid: "Maintain clean data and use reports more actively for planning.", focusHigh: "Coach users; analyze recurring data gaps; propose controlled process improvements." },
+  { name: "Quotation Accuracy", category: "Skill", meaning: "Ability to prepare accurate quotations with correct prices, products, and details.", focusLow: "Quotation checklist; product/pricing refresh; mandatory peer review; error log and weekly corrective feedback.", focusMid: "Maintain accuracy and build capability in complex configurations and revisions.", focusHigh: "Review complex cases; mentor peers; improve quotation-control checklists." },
+  { name: "Account & Relationship Management", category: "Skill", meaning: "Ability to maintain strong customer relationships and manage key accounts.", focusLow: "Account-plan coaching; stakeholder mapping; scheduled account reviews; supervised relationship-building actions.", focusMid: "Maintain trust and deepen stakeholder and future-needs understanding.", focusHigh: "Lead strategic accounts; mentor peers; develop account-planning standards." },
+  { name: "Leads generation", category: "Skill", meaning: "Ability to actively identify and create new sales opportunities.", focusLow: "Prospecting plan; target list; activity standards; scripts; weekly conversion review; joint outreach.", focusMid: "Maintain pipeline coverage and improve channel or qualification effectiveness.", focusHigh: "Open strategic accounts; mentor prospecting; test and document scalable lead sources." },
+  { name: "Engagement", category: "Will", meaning: "Level of involvement, energy, and active participation in daily work.", focusLow: "Clarify expectations and barriers; agree short-term participation actions; weekly check-ins; address workload or role obstacles.", focusMid: "Maintain sustainable participation and identify one meaningful contribution area.", focusHigh: "Lead engagement in appropriate initiatives; model sustainable involvement; support peer participation." },
+  { name: "Target Drive", category: "Will", meaning: "Motivation and determination to achieve or exceed sales targets.", focusLow: "Break targets into weekly actions; visible activity plan; frequent review; remove barriers; reinforce ethical/process limits.", focusMid: "Maintain disciplined activity and strengthen forward pipeline planning.", focusHigh: "Take stretch goals; mentor planning discipline; share effective recovery practices." },
+  { name: "Initiative", category: "Will", meaning: "Willingness to take action without waiting for instructions.", focusLow: "Define decision boundaries; assign small ownership areas; require action proposals; review judgment and escalation weekly.", focusMid: "Maintain responsible initiative and take ownership of a broader recurring issue.", focusHigh: "Lead cross-functional improvements; mentor sound initiative; strengthen team anticipation." },
+  { name: "Ownership & Accountability", category: "Will", meaning: "Takes responsibility for actions, results, and assigned responsibilities.", focusLow: "Clarify ownership and deadlines; written commitments; frequent check-ins; after-action reviews; corrective-action tracking.", focusMid: "Maintain reliable follow-through and strengthen risk anticipation.", focusHigh: "Own cross-functional outcomes; mentor accountability; improve commitment-tracking routines." },
+  { name: "Learning & Development", category: "Will", meaning: "Willingness to learn, improve skills, and develop professionally.", focusLow: "Agree one specific behavior to practice; provide training/coaching; observe application; review evidence regularly.", focusMid: "Maintain application and select the next role-relevant capability.", focusHigh: "Mentor learners; lead knowledge sharing; convert lessons into practical team guidance." },
+  { name: "Commitment", category: "Will", meaning: "Consistency and dedication toward work, goals, and responsibilities.", focusLow: "Clarify non-negotiable commitments; identify barriers; set short-cycle milestones; monitor reliability and communication.", focusMid: "Maintain dependable delivery and improve planning for peak periods.", focusHigh: "Support critical priorities; model sustainable reliability; improve team commitment practices." },
+  { name: "Persistence", category: "Will", meaning: "Ability to keep working toward results despite rejection, setbacks, or difficulties.", focusLow: "Set follow-up cadence; setback debriefs; alternative-action planning; manager support on difficult cases.", focusMid: "Maintain persistence and strengthen judgment on adapting or closing.", focusHigh: "Lead recovery cases; coach resilience and judgment; share patterns from setbacks." },
+  { name: "Teamwork", category: "Will", meaning: "Ability to cooperate, support colleagues, and contribute to team success.", focusLow: "Set handoff standards; role clarity; joint tasks; feedback on specific behaviors; facilitated problem-solving if needed.", focusMid: "Maintain dependable cooperation and improve one cross-functional relationship.", focusHigh: "Lead cross-functional initiatives; mentor collaboration; improve team handoff practices." },
+];
+
+const QUADRANT_PLAYBOOK = {
+  "STAR": {
+    approach: "Empower the employee and delegate real responsibility. Give challenging, stretch targets. Retain and recognize their contribution. Prepare them for leadership opportunities.",
+    coaching: "Assign a stretch project or mentoring role. Involve them in strategic accounts. Discuss career path and leadership readiness. Recognize performance publicly.",
+  },
+  "MOTIVATE / RE-ENGAGE": {
+    approach: "Understand the underlying motivation problem. Re-engage the employee. Discuss career goals openly. Set clear expectations and use short-term, measurable targets. Monitor engagement closely.",
+    coaching: "Hold a 1:1 to diagnose the motivation gap. Set short-term measurable targets (30-60 days). Reconnect goals to incentives/career growth. Monitor engagement weekly.",
+  },
+  "DEVELOP / COACH": {
+    approach: "Invest in coaching. Provide product and sales training. Use shadowing with top performers. Give weekly feedback. Set a clear, time-bound development period and reassess capability after it.",
+    coaching: "Enroll in product & sales-technique training. Pair with a top performer for shadowing. Weekly feedback sessions. Reassess capability at the end of the agreed period.",
+  },
+  "PERFORMANCE MANAGEMENT": {
+    approach: "Diagnose the root cause of low skill and low will. Set clear expectations. Put a formal performance improvement plan (PIP) in place. Monitor closely and reassess role fit if no improvement is seen.",
+    coaching: "Formal Performance Improvement Plan with named milestones. Close weekly monitoring. Reassess role fit if no measurable improvement within the agreed period.",
+  },
+};
+
+const SKILL_CRITERIA = CRITERIA.filter((c) => c.category === "Skill");
+const WILL_CRITERIA = CRITERIA.filter((c) => c.category === "Will");
+
+const QUADRANT_COLORS = {
+  "STAR": "#1F7A4D",
+  "MOTIVATE / RE-ENGAGE": "#C97A1D",
+  "DEVELOP / COACH": "#2A5FA5",
+  "PERFORMANCE MANAGEMENT": "#B23A2E",
+};
+
+const INK = "#1B1F1D";
+const PAPER = "#EDEEEA";
+const LINE = "#E4E2DA";
+const ACCENT = "#3B2E58";
+
+// Locked quadrant split — matches the original workbook exactly. Skill or
+// Will >= 3.0 counts as "High". Not user-adjustable by design.
+const QUADRANT_SPLIT = 3.0;
+
+/* ==========================================================================
+   SCORING ENGINE — mirrors scoring.py exactly (same cutoffs, same logic)
+   ========================================================================== */
+
+function scoreToLevel(score) {
+  if (score == null) return "";
+  if (score < 2.5) return "Very Low";
+  if (score < 3.0) return "Low";
+  if (score < 3.5) return "Medium";
+  if (score < 4.25) return "High";
+  return "Very High";
+}
+
+function assignQuadrant(skillAvg, willAvg) {
+  // Locked to the original workbook's formula: Skill/Will >= 3.0 is "High".
+  const skillHigh = skillAvg >= QUADRANT_SPLIT;
+  const willHigh = willAvg >= QUADRANT_SPLIT;
+  if (skillHigh && willHigh) return "STAR";
+  if (skillHigh && !willHigh) return "MOTIVATE / RE-ENGAGE";
+  if (!skillHigh && willHigh) return "DEVELOP / COACH";
+  return "PERFORMANCE MANAGEMENT";
+}
+
+function focusFor(criterion, score) {
+  if (score <= 2) return criterion.focusLow;
+  if (score === 3) return criterion.focusMid;
+  return criterion.focusHigh;
+}
+
+function computeAssessment(ratings) {
+  const skillScores = SKILL_CRITERIA.map((c) => ratings[c.name]).filter((v) => v != null);
+  const willScores = WILL_CRITERIA.map((c) => ratings[c.name]).filter((v) => v != null);
+  const skillAvg = skillScores.length ? skillScores.reduce((a, b) => a + b, 0) / skillScores.length : null;
+  const willAvg = willScores.length ? willScores.reduce((a, b) => a + b, 0) / willScores.length : null;
+  const quadrant = skillAvg != null && willAvg != null ? assignQuadrant(skillAvg, willAvg) : null;
+
+  const all = CRITERIA.map((c) => ({ ...c, score: ratings[c.name] })).filter((c) => c.score != null);
+  const strengths = all.filter((c) => c.score >= 4).sort((a, b) => b.score - a.score).slice(0, 3);
+  let gaps = all.filter((c) => c.score <= 2).sort((a, b) => a.score - b.score);
+  if (gaps.length === 0) {
+    gaps = [...all].sort((a, b) => a.score - b.score).slice(0, 3);
+  }
+
+  return {
+    skillAvg, willAvg,
+    skillLevel: scoreToLevel(skillAvg),
+    willLevel: scoreToLevel(willAvg),
+    quadrant, strengths, gaps,
+  };
+}
+
+/* ==========================================================================
+   SEED TEAM — the same four employees from the source workbook, so the
+   prototype opens grounded in the real case study instead of empty state.
+   ========================================================================== */
+
+const SEED_TEAM = [
+  {
+    id: "yara", name: "Yara",
+    ratings: {
+      "Product Knowledge": 5, "Sales Technique": 5, "Communication & Presentation": 1, "Objection Handling": 5,
+      "Negotiation": 5, "Closing": 5, "Follow-up": 5, "CRM / Process Knowledge": 3, "Quotation Accuracy": 3,
+      "Account & Relationship Management": 3, "Leads generation": 3,
+      "Engagement": 1, "Target Drive": 1, "Initiative": 2, "Ownership & Accountability": 5,
+      "Learning & Development": 2, "Commitment": 5, "Persistence": 1, "Teamwork": 4,
+    },
+  },
+  {
+    id: "mohamed-hassan", name: "Mohamed Hassan",
+    ratings: {
+      "Product Knowledge": 5, "Sales Technique": 5, "Communication & Presentation": 1, "Objection Handling": 3,
+      "Negotiation": 4, "Closing": 3, "Follow-up": 1, "CRM / Process Knowledge": 5, "Quotation Accuracy": 3,
+      "Account & Relationship Management": 3, "Leads generation": 3,
+      "Engagement": 1, "Target Drive": 3, "Initiative": 3, "Ownership & Accountability": 2,
+      "Learning & Development": 2, "Commitment": 2, "Persistence": 4, "Teamwork": 1,
+    },
+  },
+  {
+    id: "mohamed-elsawy", name: "Mohamed Elsawy",
+    ratings: {
+      "Product Knowledge": 1, "Sales Technique": 2, "Communication & Presentation": 5, "Objection Handling": 4,
+      "Negotiation": 5, "Closing": 5, "Follow-up": 5, "CRM / Process Knowledge": 3, "Quotation Accuracy": 3,
+      "Account & Relationship Management": 3, "Leads generation": 3,
+      "Engagement": 2, "Target Drive": 5, "Initiative": 3, "Ownership & Accountability": 5,
+      "Learning & Development": 5, "Commitment": 5, "Persistence": 4, "Teamwork": 2,
+    },
+  },
+  {
+    id: "ahmed-hamdy", name: "Ahmed Hamdy",
+    ratings: {
+      "Product Knowledge": 2, "Sales Technique": 2, "Communication & Presentation": 2, "Objection Handling": 4,
+      "Negotiation": 2, "Closing": 2, "Follow-up": 3, "CRM / Process Knowledge": 1, "Quotation Accuracy": 3,
+      "Account & Relationship Management": 3, "Leads generation": 3,
+      "Engagement": 5, "Target Drive": 1, "Initiative": 3, "Ownership & Accountability": 2,
+      "Learning & Development": 2, "Commitment": 1, "Persistence": 4, "Teamwork": 3,
+    },
+  },
+];
+
+function blankRatings() {
+  const r = {};
+  CRITERIA.forEach((c) => { r[c.name] = 3; });
+  return r;
+}
+
+/* ==========================================================================
+   SMALL PRESENTATIONAL PIECES
+   ========================================================================== */
+
+function RatingSlider({ criterion, value, accent, onChange }) {
+  const pct = ((value - 1) / 4) * 100;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-1.5">
+        <label className="font-body text-sm cursor-help" style={{ color: INK }} title={criterion.meaning}>
+          {criterion.name}
+        </label>
+        <span className="font-display text-base font-medium tabular-nums" style={{ color: accent }}>
+          {value}
+        </span>
+      </div>
+      <input
+        type="range" min="1" max="5" step="1" value={value}
+        onChange={(e) => onChange(criterion.name, parseInt(e.target.value, 10))}
+        className="ww-range w-full"
+        style={{ background: `linear-gradient(to right, ${accent} ${pct}%, ${LINE} ${pct}%)` }}
+      />
+    </div>
+  );
+}
+
+function SliderGroup({ title, criteria, ratings, onChange, accent }) {
+  return (
+    <div className="rounded-xl p-5" style={{ backgroundColor: "#fff", border: `1px solid ${LINE}` }}>
+      <div className="flex items-center gap-2 mb-4">
+        <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: accent }} />
+        <h3 className="font-display text-lg" style={{ color: INK }}>{title}</h3>
+        <span className="font-body text-xs text-gray-400">{criteria.length} criteria</span>
+      </div>
+      <div className="space-y-4">
+        {criteria.map((c) => (
+          <RatingSlider key={c.name} criterion={c} value={ratings[c.name]} accent={accent} onChange={onChange} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QuadrantBadge({ quadrant, size = "md" }) {
+  const color = QUADRANT_COLORS[quadrant] || "#9CA3AF";
+  const cls = size === "lg" ? "text-xl px-6 py-3" : size === "sm" ? "text-xs px-3 py-1" : "text-sm px-5 py-2";
+  return (
+    <span className={"rounded-xl font-display font-semibold text-white inline-block " + cls} style={{ backgroundColor: color }}>
+      {quadrant}
+    </span>
+  );
+}
+
+// Five-band level color scale — deliberately distinct from the four quadrant
+// colors so "how good is this criterion" (level) never gets confused with
+// "which quadrant" (a Skill+Will combination).
+const LEVEL_COLORS = {
+  "Very Low": "#B23A2E",
+  "Low": "#D98B4B",
+  "Medium": "#C9A227",
+  "High": "#4E8F6C",
+  "Very High": "#1F7A4D",
+};
+
+function LevelBadge({ level }) {
+  const color = LEVEL_COLORS[level] || "#9CA3AF";
+  return (
+    <span className="rounded-full font-body text-xs font-semibold text-white px-3 py-1 inline-block whitespace-nowrap" style={{ backgroundColor: color }}>
+      {level}
+    </span>
+  );
+}
+
+// Read-only visual indicator: fills up to the current average and marks the
+// fixed 3.0 cutoff with a static tick, so the manager can see at a glance
+// which side of the line a score falls on — no input, purely a display.
+function ScoreBar({ value, color }) {
+  const min = 1, max = 5;
+  const pct = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+  const cutoffPct = ((QUADRANT_SPLIT - min) / (max - min)) * 100;
+  return (
+    <div className="pt-5">
+      <div className="relative">
+        <div
+          className="absolute font-display text-xs font-semibold whitespace-nowrap"
+          style={{ left: `${pct}%`, top: -20, transform: "translateX(-50%)", color }}
+        >
+          {value.toFixed(2)}
+        </div>
+        <div className="relative h-2 rounded-full" style={{ backgroundColor: LINE }}>
+          <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+          <div className="absolute" style={{ left: `${cutoffPct}%`, top: -4, bottom: -4, width: 2, backgroundColor: INK, opacity: 0.3 }} />
+          <div
+            className="absolute rounded-full"
+            style={{
+              left: `${pct}%`, top: "50%", width: 12, height: 12, backgroundColor: color,
+              border: "2px solid #fff", transform: "translate(-50%, -50%)", boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+            }}
+          />
+        </div>
+        <div className="flex justify-between font-body text-xs text-gray-400 mt-1.5">
+          <span>Low</span>
+          <span>Cutoff 3.0</span>
+          <span>High</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Read-only score block: fraction, level badge, and the cutoff-relative bar.
+// No sliders or inputs live here — this panel is purely for display.
+function ScoreMetric({ label, value, level, accent }) {
+  return (
+    <div className="rounded-xl p-5" style={{ backgroundColor: PAPER }}>
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <p className="font-body text-sm text-gray-500">{label}</p>
+        <LevelBadge level={level} />
+      </div>
+      <p className="font-display text-3xl tabular-nums" style={{ color: INK }}>
+        {value.toFixed(2)} <span className="font-body text-base text-gray-400">/ 5.0</span>
+      </p>
+      <ScoreBar value={value} color={accent} />
+    </div>
+  );
+}
+
+function MatrixDot({ cx, cy, payload, selectedId }) {
+  if (cx == null || cy == null) return null;
+  const isSel = payload.id === selectedId;
+  const color = QUADRANT_COLORS[payload.quadrant] || "#9CA3AF";
+  return (
+    <g>
+      {isSel && <circle cx={cx} cy={cy} r={13} fill="none" stroke={color} strokeWidth={2} opacity={0.35} />}
+      <circle cx={cx} cy={cy} r={isSel ? 7 : 5.5} fill={color} stroke="#fff" strokeWidth={1.5} />
+      <text x={cx} y={cy - (isSel ? 17 : 12)} textAnchor="middle" fontSize={11} fontFamily="Inter, sans-serif" fill="#4B5563">
+        {payload.name}
+      </text>
+    </g>
+  );
+}
+
+function MatrixTooltip({ active, payload }) {
+  if (!active || !payload || !payload.length) return null;
+  const p = payload[0].payload;
+  return (
+    <div className="rounded-lg px-3 py-2.5 font-body text-xs shadow-lg" style={{ backgroundColor: INK, color: "#fff" }}>
+      <p className="font-semibold mb-1">{p.name}</p>
+      <p className="text-white/80">Skill {p.skill.toFixed(2)} &middot; Will {p.will.toFixed(2)}</p>
+      <p className="text-white/50 mt-1">{p.quadrant}</p>
+      {p.topGap && <p className="text-white/50">Top priority: {p.topGap}</p>}
+    </div>
+  );
+}
+
+/* ==========================================================================
+   MAIN COMPONENT
+   ========================================================================== */
+
+export default function SkillWillPrototype() {
+  const [team, setTeam] = useState(SEED_TEAM);
+  const [selectedId, setSelectedId] = useState(SEED_TEAM[0].id);
+  const [addingNew, setAddingNew] = useState(false);
+  const [draftName, setDraftName] = useState("");
+
+  const assessments = useMemo(() => {
+    const map = {};
+    team.forEach((e) => { map[e.id] = computeAssessment(e.ratings); });
+    return map;
+  }, [team]);
+
+  const selected = team.find((e) => e.id === selectedId) || team[0] || null;
+  const selectedAssessment = selected ? assessments[selected.id] : null;
+
+  const quadrantCounts = useMemo(() => {
+    const counts = { "STAR": 0, "MOTIVATE / RE-ENGAGE": 0, "DEVELOP / COACH": 0, "PERFORMANCE MANAGEMENT": 0 };
+    team.forEach((e) => { const q = assessments[e.id]?.quadrant; if (q) counts[q] += 1; });
+    return counts;
+  }, [team, assessments]);
+
+  const matrixData = useMemo(
+    () => team.map((e) => ({
+      id: e.id, name: e.name,
+      skill: assessments[e.id].skillAvg, will: assessments[e.id].willAvg,
+      quadrant: assessments[e.id].quadrant, topGap: assessments[e.id].gaps[0]?.name,
+    })),
+    [team, assessments]
+  );
+
+  function updateRating(criterionName, value) {
+    setTeam((prev) => prev.map((e) => (e.id === selected.id
+      ? { ...e, ratings: { ...e.ratings, [criterionName]: value } }
+      : e)));
+  }
+
+  function addEmployee() {
+    const name = draftName.trim();
+    if (!name) return;
+    const id = `${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
+    const newEmp = { id, name, ratings: blankRatings() };
+    setTeam((prev) => [...prev, newEmp]);
+    setSelectedId(id);
+    setDraftName("");
+    setAddingNew(false);
+  }
+
+  function removeEmployee(id) {
+    setTeam((prev) => {
+      const next = prev.filter((e) => e.id !== id);
+      if (id === selectedId && next.length) setSelectedId(next[0].id);
+      return next;
+    });
+  }
+
+  return (
+    <div className="min-h-screen font-body" style={{ backgroundColor: PAPER }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap');
+        .font-display { font-family: 'Fraunces', Georgia, serif; }
+        .font-body { font-family: 'Inter', system-ui, sans-serif; }
+        .ww-range { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; outline: none; }
+        .ww-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 4px; background: ${INK}; cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+        .ww-range::-moz-range-thumb { width: 16px; height: 16px; border-radius: 4px; background: ${INK}; cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+      `}</style>
+
+      {/* ---------- Header ---------- */}
+      <header className="max-w-6xl mx-auto px-6 pt-10 pb-4">
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <h1 className="font-display text-4xl" style={{ color: INK }}>Skill / Will Playbook</h1>
+          <p className="font-body text-sm text-gray-500 max-w-xs text-right">
+            Move a rating and watch the quadrant, matrix, and coaching plan update as you go.
+          </p>
+        </div>
+      </header>
+
+      {/* ---------- Score Summary Card — read-only, updates live ---------- */}
+      {selected && selectedAssessment && (
+        <section className="max-w-6xl mx-auto px-6">
+          <div className="rounded-2xl p-6 md:p-8" style={{ backgroundColor: "#fff", border: `1px solid ${LINE}` }}>
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <div>
+                <p className="font-body text-sm text-gray-500 mb-1">Currently reviewing</p>
+                <h2 className="font-display text-2xl" style={{ color: INK }}>{selected.name}</h2>
+              </div>
+              <div className="text-right">
+                <p className="font-body text-xs text-gray-400 mb-1.5">Resulting quadrant</p>
+                <QuadrantBadge quadrant={selectedAssessment.quadrant} size="lg" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <ScoreMetric
+                label="Skill Average" value={selectedAssessment.skillAvg} level={selectedAssessment.skillLevel}
+                accent={QUADRANT_COLORS["DEVELOP / COACH"]}
+              />
+              <ScoreMetric
+                label="Will Average" value={selectedAssessment.willAvg} level={selectedAssessment.willLevel}
+                accent={QUADRANT_COLORS["MOTIVATE / RE-ENGAGE"]}
+              />
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ---------- Main working area ---------- */}
+      <main className="max-w-6xl mx-auto px-6 py-6 flex flex-col lg:flex-row gap-6 items-start">
+        {/* Roster rail */}
+        <aside className="w-full lg:w-60 flex-shrink-0 space-y-4">
+          <div className="rounded-xl p-3" style={{ backgroundColor: "#fff", border: `1px solid ${LINE}` }}>
+            <p className="font-body text-xs text-gray-500 px-2 pb-2">Roster</p>
+            <div className="space-y-1">
+              {team.map((e) => {
+                const a = assessments[e.id];
+                const isSel = selected && e.id === selected.id;
+                return (
+                  <button
+                    key={e.id}
+                    onClick={() => setSelectedId(e.id)}
+                    className={"w-full text-left px-3 py-2 rounded-lg flex items-center justify-between group transition-colors " + (isSel ? "bg-gray-100" : "hover:bg-gray-50")}
+                  >
+                    <span className="flex items-center gap-2 font-body text-sm truncate" style={{ color: INK }}>
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: QUADRANT_COLORS[a.quadrant] }} />
+                      <span className="truncate">{e.name}</span>
+                    </span>
+                    <Trash2
+                      size={14}
+                      className="opacity-0 group-hover:opacity-60 text-gray-400 flex-shrink-0 ml-2"
+                      onClick={(ev) => { ev.stopPropagation(); removeEmployee(e.id); }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+
+            {addingNew ? (
+              <div className="mt-2 px-1">
+                <input
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") addEmployee(); }}
+                  placeholder="Employee name"
+                  autoFocus
+                  className="w-full font-body text-sm px-2.5 py-1.5 rounded-md border border-gray-300 mb-2 outline-none focus:border-gray-400"
+                />
+                <div className="flex gap-2">
+                  <button onClick={addEmployee} className="flex-1 font-body text-xs font-semibold text-white rounded-md py-1.5" style={{ backgroundColor: ACCENT }}>
+                    Add
+                  </button>
+                  <button onClick={() => { setAddingNew(false); setDraftName(""); }} className="font-body text-xs text-gray-500 px-2">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setAddingNew(true)} className="w-full mt-1 flex items-center gap-1.5 px-3 py-2 rounded-lg font-body text-sm text-gray-500 hover:bg-gray-50">
+                <Plus size={14} /> Add employee
+              </button>
+            )}
+          </div>
+
+          <div className="rounded-xl p-4" style={{ backgroundColor: "#fff", border: `1px solid ${LINE}` }}>
+            <p className="font-body text-xs text-gray-500 mb-1">Quadrant rule</p>
+            <p className="font-body text-xs text-gray-400 leading-relaxed">
+              Skill or Will &ge; 3.0 counts as High — locked to the original workbook's formula.
+            </p>
+          </div>
+        </aside>
+
+        {/* Sliders */}
+        {selected && (
+          <div className="w-full lg:flex-1 min-w-0 space-y-4">
+            <SliderGroup title="Skill" criteria={SKILL_CRITERIA} ratings={selected.ratings} onChange={updateRating} accent={QUADRANT_COLORS["DEVELOP / COACH"]} />
+            <SliderGroup title="Will" criteria={WILL_CRITERIA} ratings={selected.ratings} onChange={updateRating} accent={QUADRANT_COLORS["MOTIVATE / RE-ENGAGE"]} />
+          </div>
+        )}
+
+        {/* Live coaching dashboard */}
+        {selected && selectedAssessment && (
+          <aside className="w-full lg:w-96 flex-shrink-0 space-y-4">
+            <div className="rounded-xl p-5" style={{ backgroundColor: "#fff", border: `1px solid ${LINE}` }}>
+              <div className="flex items-center gap-2 mb-3">
+                <Star size={16} style={{ color: QUADRANT_COLORS["STAR"] }} />
+                <h3 className="font-display text-lg" style={{ color: INK }}>Top strengths</h3>
+              </div>
+              {selectedAssessment.strengths.length === 0 ? (
+                <p className="font-body text-sm text-gray-400">No criteria at 4 or above yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {selectedAssessment.strengths.map((c) => (
+                    <li key={c.name} className="flex items-center justify-between font-body text-sm">
+                      <span style={{ color: INK }}>{c.name}</span>
+                      <span className="font-semibold tabular-nums" style={{ color: QUADRANT_COLORS["STAR"] }}>{c.score}/5</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl p-5" style={{ backgroundColor: "#fff", border: `1px solid ${LINE}` }}>
+              <div className="flex items-center gap-2 mb-3">
+                <Target size={16} style={{ color: QUADRANT_COLORS["PERFORMANCE MANAGEMENT"] }} />
+                <h3 className="font-display text-lg" style={{ color: INK }}>Development areas</h3>
+              </div>
+              <div className="space-y-3">
+                {selectedAssessment.gaps.map((c) => (
+                  <div key={c.name} className="pb-3 border-b last:border-0 last:pb-0" style={{ borderColor: LINE }}>
+                    <div className="flex items-center justify-between font-body text-sm mb-1">
+                      <span style={{ color: INK }}>{c.name}</span>
+                      <span className="font-semibold tabular-nums" style={{ color: QUADRANT_COLORS["PERFORMANCE MANAGEMENT"] }}>{c.score}/5</span>
+                    </div>
+                    <p className="font-body text-xs text-gray-500 leading-relaxed">{focusFor(c, c.score)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl p-5" style={{ backgroundColor: ACCENT }}>
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles size={16} className="text-white/80" />
+                <h3 className="font-display text-lg text-white">Coaching plan</h3>
+              </div>
+              <p className="font-body text-xs text-white/55 mb-1">Recommended management approach</p>
+              <p className="font-body text-sm text-white/90 mb-4 leading-relaxed">
+                {QUADRANT_PLAYBOOK[selectedAssessment.quadrant]?.approach}
+              </p>
+              <p className="font-body text-xs text-white/55 mb-1">Development / coaching action</p>
+              <p className="font-body text-sm text-white/90 leading-relaxed">
+                {QUADRANT_PLAYBOOK[selectedAssessment.quadrant]?.coaching}
+              </p>
+            </div>
+          </aside>
+        )}
+      </main>
+
+      {/* ---------- Team matrix ---------- */}
+      <section className="max-w-6xl mx-auto px-6 pb-16">
+        <div className="rounded-xl p-5 md:p-6" style={{ backgroundColor: "#fff", border: `1px solid ${LINE}` }}>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <h3 className="font-display text-xl" style={{ color: INK }}>Team Skill / Will Matrix</h3>
+            <div className="flex items-center gap-4 font-body text-xs text-gray-500 flex-wrap">
+              {Object.entries(QUADRANT_COLORS).map(([q, color]) => (
+                <span key={q} className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                  {q} ({quadrantCounts[q]})
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {team.length === 0 ? (
+            <p className="font-body text-sm text-gray-400 py-16 text-center">
+              No employees yet — add one from the roster panel above.
+            </p>
+          ) : (
+            <div style={{ height: 420 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 16, right: 24, bottom: 16, left: 8 }}>
+                  <CartesianGrid stroke="#EEECE4" />
+                  <XAxis
+                    type="number" dataKey="skill" name="Skill" domain={[1, 5]} tickCount={5}
+                    tick={{ fontSize: 11, fill: "#9CA3AF" }}
+                    label={{ value: "Skill Average", position: "insideBottom", offset: -8, fontSize: 12, fill: "#6B7280" }}
+                  />
+                  <YAxis
+                    type="number" dataKey="will" name="Will" domain={[1, 5]} tickCount={5}
+                    tick={{ fontSize: 11, fill: "#9CA3AF" }}
+                    label={{ value: "Will Average", angle: -90, position: "insideLeft", fontSize: 12, fill: "#6B7280" }}
+                  />
+                  <ReferenceArea x1={1} x2={QUADRANT_SPLIT} y1={QUADRANT_SPLIT} y2={5} fill={QUADRANT_COLORS["DEVELOP / COACH"]} fillOpacity={0.06} />
+                  <ReferenceArea x1={QUADRANT_SPLIT} x2={5} y1={QUADRANT_SPLIT} y2={5} fill={QUADRANT_COLORS["STAR"]} fillOpacity={0.06} />
+                  <ReferenceArea x1={1} x2={QUADRANT_SPLIT} y1={1} y2={QUADRANT_SPLIT} fill={QUADRANT_COLORS["PERFORMANCE MANAGEMENT"]} fillOpacity={0.06} />
+                  <ReferenceArea x1={QUADRANT_SPLIT} x2={5} y1={1} y2={QUADRANT_SPLIT} fill={QUADRANT_COLORS["MOTIVATE / RE-ENGAGE"]} fillOpacity={0.06} />
+                  <ReferenceLine x={QUADRANT_SPLIT} stroke="#D1CFC6" strokeDasharray="4 3" />
+                  <ReferenceLine y={QUADRANT_SPLIT} stroke="#D1CFC6" strokeDasharray="4 3" />
+                  <Tooltip content={<MatrixTooltip />} cursor={{ stroke: "#D1CFC6", strokeDasharray: "3 3" }} />
+                  <Scatter data={matrixData} shape={<MatrixDot selectedId={selected?.id} />} />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        <p className="font-body text-xs text-gray-400 mt-4 text-center">
+          Prototype for UX review — quadrant split is locked at 3.0 on both axes, matching the original workbook. Exports and multi-tab layout will be finalized in the Python build.
+        </p>
+      </section>
+    </div>
+  );
+}
